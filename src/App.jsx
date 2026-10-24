@@ -1,14 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
-  ArrowRight,
   Bell,
   Building2,
   ChevronLeft,
   ChevronRight,
   CreditCard,
   FileText,
-  Landmark,
   LayoutDashboard,
   Menu,
   Percent,
@@ -23,7 +20,6 @@ import {
   ReceiptText,
   FolderKanban,
   ClipboardList,
-  CircleDollarSign,
   Sparkles,
   Database,
   Eye,
@@ -38,7 +34,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { createEmptyCoreData, loadCoreData } from './lib/coreData';
 const CoreModules = lazy(() => import('./components/CoreModules').then((module) => ({ default: module.CoreModules })));
 const OperationalModules = lazy(() => import('./components/OperationalModules').then((module) => ({ default: module.OperationalModules })));
-const DashboardChart = lazy(() => import('./components/DashboardChart').then((module) => ({ default: module.DashboardChart })));
+const DashboardNotes = lazy(() => import('./components/DashboardNotes').then((module) => ({ default: module.DashboardNotes })));
 
 const currency = new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -150,6 +146,7 @@ function SignInTransition() {
 }
 
 function LoginScreen({ transitioning, onTransitionStart, onTransitionCancel }) {
+  const isLocalDevelopment = ['localhost', '127.0.0.1'].includes(window.location.hostname);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -163,7 +160,9 @@ function LoginScreen({ transitioning, onTransitionStart, onTransitionCancel }) {
     setMessage('');
 
     if (!supabase) {
-      setMessage('Supabase is not configured. Add your project URL and anon key to .env, then restart the dev server.');
+      setMessage(isLocalDevelopment
+        ? 'Supabase is not configured. Add your project URL and anon key to .env, then restart the dev server.'
+        : 'Supabase is not configured for this deployment. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Vercel project settings, then redeploy.');
       return;
     }
 
@@ -244,8 +243,13 @@ function LoginScreen({ transitioning, onTransitionStart, onTransitionCancel }) {
 
           {!isSupabaseConfigured ? (
             <div role="alert" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              Supabase is not configured. Set <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_URL</code> and{' '}
-              <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_ANON_KEY</code> in the project’s <code className="rounded bg-amber-100 px-1 py-0.5">.env</code> file, then restart Vite.
+              {isLocalDevelopment ? (
+                <>Supabase is not configured. Set <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_URL</code> and{' '}
+                  <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_ANON_KEY</code> in the project’s <code className="rounded bg-amber-100 px-1 py-0.5">.env</code> file, then restart Vite.</>
+              ) : (
+                <>Supabase is not configured for this deployment. In Vercel, open <strong>Project Settings → Environment Variables</strong>, add <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_URL</code> and{' '}
+                  <code className="rounded bg-amber-100 px-1 py-0.5">VITE_SUPABASE_ANON_KEY</code>, then redeploy.</>
+              )}
             </div>
           ) : null}
 
@@ -498,11 +502,6 @@ function App() {
   const canReadFinancials = ['admin', 'manager', 'accounting'].includes(coreData.profile?.role);
   const activeTenants = canReadPortfolio ? coreData.tenants.filter((tenant) => tenant.status === 'active').length : null;
   const activeLeases = canReadPortfolio ? activeDashboardLeases.length : null;
-  const occupancyData = [
-    { name: 'Occupied', value: occupiedUnits },
-    { name: 'Vacant', value: vacantUnits },
-    { name: 'Reserved', value: reservedUnits },
-  ];
   const periodInvoices = coreData.invoices.filter((invoice) => invoice.billing_period === currentBillingPeriod && invoice.status !== 'void');
   const currentRentBilling = periodInvoices.filter((invoice) => invoice.invoice_type === 'rent').reduce((total, invoice) => total + Number(invoice.total_amount || 0), 0);
   const currentUtilityBilling = coreData.utility_bills.filter((bill) => bill.billing_period === currentBillingPeriod).reduce((total, bill) => total + Number(bill.total_due ?? bill.total_amount ?? 0), 0);
@@ -512,115 +511,43 @@ function App() {
   const next90Days = new Date(`${todayInManila}T00:00:00+08:00`);
   next90Days.setDate(next90Days.getDate() + 90);
   const upcomingEscalations = coreData.escalations.filter((item) => item.status === 'scheduled' && item.scheduled_date >= todayInManila && item.scheduled_date <= next90Days.toISOString().slice(0, 10)).length;
-  const dashboardChartData = Array.from({ length: 6 }, (_, index) => {
-    const monthDate = new Date(`${currentBillingPeriod}-01T00:00:00Z`);
-    monthDate.setUTCMonth(monthDate.getUTCMonth() - (5 - index));
-    const month = monthDate.toISOString().slice(0, 7);
-    const monthInvoices = coreData.invoices.filter((invoice) => invoice.billing_period === month && invoice.status !== 'void');
-    return {
-      month: new Intl.DateTimeFormat('en', { month: 'short', timeZone: 'UTC' }).format(monthDate),
-      billing: monthInvoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0),
-      collections: coreData.payments.filter((payment) => payment.status === 'posted' && payment.payment_date?.slice(0, 7) === month).reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
-      receivables: monthInvoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0),
-    };
-  });
-  const agingBuckets = { Current: 0, '1-30 days': 0, '31-60 days': 0, '61-90 days': 0, '90+ days': 0 };
-  coreData.invoices.filter((invoice) => invoice.status !== 'void' && Number(invoice.outstanding_amount) > 0).forEach((invoice) => {
-    const daysPastDue = Math.floor((Date.parse(`${todayInManila}T00:00:00Z`) - Date.parse(`${invoice.due_date}T00:00:00Z`)) / 86400000);
-    const bucket = daysPastDue <= 0 ? 'Current' : daysPastDue <= 30 ? '1-30 days' : daysPastDue <= 60 ? '31-60 days' : daysPastDue <= 90 ? '61-90 days' : '90+ days';
-    agingBuckets[bucket] += Number(invoice.outstanding_amount);
-  });
-  const agingData = Object.entries(agingBuckets).map(([name, value]) => ({ name, value }));
   const recentPayments = [...coreData.payments]
     .filter((payment) => payment.status === 'posted')
     .sort((a, b) => b.payment_date.localeCompare(a.payment_date))
     .slice(0, 5);
-
+  const upcomingInvoices = [...coreData.invoices]
+    .filter((invoice) => invoice.status !== 'void' && Number(invoice.outstanding_amount) > 0 && invoice.due_date >= todayInManila)
+    .sort((left, right) => left.due_date.localeCompare(right.due_date))
+    .slice(0, 5);
   const dashboardMetrics = [
-      {
-        label: 'Total properties',
-        value: totalProperties.toString(),
-        detail: 'Across active commercial assets',
-        accent: 'bg-slate-200',
-        icon: Building,
-      },
-      {
-        label: 'Rentable units',
-        value: rentableUnits.toString(),
-        detail: `${rentableUnits} rentable of ${totalUnits} recorded units`,
-        accent: 'bg-amber-100',
-        icon: Building2,
-      },
-      {
-        label: 'Occupied units',
-        value: occupiedUnits.toString(),
-        detail: `${occupancyRate}% occupancy rate`,
-        accent: 'bg-emerald-100',
-        icon: Landmark,
-      },
-      {
-        label: 'Vacant units',
-        value: vacantUnits.toString(),
-        detail: `${reservedUnits} reserved for active review`,
-        accent: 'bg-blue-100',
-        icon: FolderKanban,
-      },
-      {
-        label: 'Active tenants',
-        value: activeTenants === null ? 'Restricted' : activeTenants.toString(),
-        detail: activeTenants === null ? 'Your role cannot access tenant records' : 'Current and active tenant roster',
-        accent: 'bg-violet-100',
-        icon: Users,
-      },
-      {
-        label: 'Active leases',
-        value: activeLeases === null ? 'Restricted' : activeLeases.toString(),
-        detail: activeLeases === null ? 'Your role cannot access lease records' : 'Current lease contracts in-force',
-        accent: 'bg-cyan-100',
-        icon: FileText,
-      },
-      {
-        label: 'Current rental billing',
-        value: canReadFinancials ? currency.format(currentRentBilling) : 'Restricted',
-        detail: canReadFinancials ? `Rent invoices issued in ${currentBillingPeriod}` : 'Your role cannot access financial records',
-        accent: 'bg-rose-100',
-        icon: ReceiptText,
-      },
-      {
-        label: 'Utility billing',
-        value: canReadFinancials ? currency.format(currentUtilityBilling) : 'Restricted',
-        detail: canReadFinancials ? `Utility bills recorded in ${currentBillingPeriod}` : 'Your role cannot access financial records',
-        accent: 'bg-teal-100',
-        icon: ZapIcon,
-      },
-      {
-        label: 'Collections received',
-        value: canReadFinancials ? currency.format(collectionsReceived) : 'Restricted',
-        detail: canReadFinancials ? `Posted payments received in ${currentBillingPeriod}` : 'Your role cannot access financial records',
-        accent: 'bg-green-100',
-        icon: CreditCard,
-      },
-      {
-        label: 'Outstanding receivables',
-        value: canReadFinancials ? currency.format(outstandingReceivables) : 'Restricted',
-        detail: canReadFinancials ? 'Outstanding balance across non-void invoices' : 'Your role cannot access financial records',
-        accent: 'bg-yellow-100',
-        icon: AlertTriangle,
-      },
-      {
-        label: 'Overdue invoices',
-        value: canReadFinancials ? overdueInvoices.toString() : 'Restricted',
-        detail: canReadFinancials ? 'Invoices past due with unpaid balances' : 'Your role cannot access financial records',
-        accent: 'bg-red-100',
-        icon: CircleDollarSign,
-      },
-      {
-        label: 'Upcoming escalations',
-        value: canReadFinancials ? upcomingEscalations.toString() : 'Restricted',
-        detail: canReadFinancials ? 'Scheduled rate changes within 90 days' : 'Your role cannot access financial records',
-        accent: 'bg-indigo-100',
-        icon: TrendingUp,
-      },
+    {
+      label: 'Properties and units',
+      value: `${totalProperties} properties`,
+      detail: `${rentableUnits} rentable units out of ${totalUnits} recorded`,
+      accent: 'bg-slate-200',
+      icon: Building,
+    },
+    {
+      label: 'Occupancy',
+      value: `${occupancyRate}%`,
+      detail: `${occupiedUnits} occupied · ${vacantUnits} vacant · ${reservedUnits} reserved`,
+      accent: 'bg-emerald-100',
+      icon: Building2,
+    },
+    {
+      label: 'Tenants and leases',
+      value: activeTenants === null ? 'Restricted' : `${activeTenants} tenants`,
+      detail: activeLeases === null ? 'Your role cannot access tenant records' : `${activeLeases} active leases`,
+      accent: 'bg-violet-100',
+      icon: Users,
+    },
+    {
+      label: 'Outstanding receivables',
+      value: canReadFinancials ? currency.format(outstandingReceivables) : 'Restricted',
+      detail: canReadFinancials ? `${overdueInvoices} overdue invoices` : 'Your role cannot access financial records',
+      accent: 'bg-amber-100',
+      icon: ReceiptText,
+    },
   ];
 
   const filteredProperties = seedData.properties.filter((item) =>
@@ -644,55 +571,74 @@ function App() {
   const renderDashboard = () => (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardMetrics.slice(0, 4).map((item) => (
+        {dashboardMetrics.map((item) => (
           <StatCard key={item.label} {...item} />
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardMetrics.slice(4).map((item) => (
-          <StatCard key={item.label} {...item} />
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.75fr_1fr]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <SectionHeader title="Collections, billing, and receivables" icon={TrendingUp} />
-          <DashboardChart type="billing" data={dashboardChartData} canReadFinancials={canReadFinancials} />
+          <SectionHeader title="Portfolio details" icon={Building2} />
+          <dl className="divide-y divide-slate-100 text-sm">
+            <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Total properties</dt><dd className="font-medium text-slate-900">{totalProperties}</dd></div>
+            <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Rentable / recorded units</dt><dd className="font-medium text-slate-900">{rentableUnits} / {totalUnits}</dd></div>
+            <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Occupied / vacant / reserved</dt><dd className="font-medium text-slate-900">{occupiedUnits} / {vacantUnits} / {reservedUnits}</dd></div>
+            <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Active tenants / leases</dt><dd className="font-medium text-slate-900">{activeTenants ?? 'Restricted'} / {activeLeases ?? 'Restricted'}</dd></div>
+            <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Upcoming escalations (90 days)</dt><dd className="font-medium text-slate-900">{canReadFinancials ? upcomingEscalations : 'Restricted'}</dd></div>
+          </dl>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <SectionHeader title="Occupancy" icon={Building2} />
-          <DashboardChart type="occupancy" data={occupancyData} canReadFinancials={canReadFinancials} />
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <SectionHeader title="Recent payments" icon={CreditCard} action={<button type="button" onClick={() => setActiveNav('Payments & Collections')} className="inline-flex items-center gap-1 text-xs font-medium text-slate-700">View all <ArrowRight className="h-3.5 w-3.5" /></button>} />
-          {!canReadFinancials ? <p className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">Your role cannot access payment records.</p> : <div className="space-y-3">
-            {recentPayments.map((payment) => {
-              const tenant = coreData.tenants.find((row) => row.id === payment.tenant_id);
-              const invoice = coreData.invoices.find((row) => row.id === payment.invoice_id);
-              return (
-                <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-900">{tenant?.business_name || tenant?.individual_name || 'Tenant'}</p>
-                    <p className="text-xs text-slate-500">{payment.payment_method} · {payment.payment_date} · {invoice?.invoice_number || 'Invoice'}</p>
-                  </div>
-                  <p className="shrink-0 font-semibold text-emerald-700">{currency.format(payment.amount)}</p>
-                </div>
-              );
-            })}
-            {!recentPayments.length ? <p className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">No posted payments for this account.</p> : null}
-          </div>}
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <SectionHeader title="Receivables aging" icon={Wallet} />
-          <DashboardChart type="aging" data={agingData} canReadFinancials={canReadFinancials} />
+          <SectionHeader title="Financial details" icon={CreditCard} />
+          {canReadFinancials ? (
+            <dl className="divide-y divide-slate-100 text-sm">
+              <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Current rent billing</dt><dd className="font-medium text-slate-900">{currency.format(currentRentBilling)}</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Current utility billing</dt><dd className="font-medium text-slate-900">{currency.format(currentUtilityBilling)}</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Collections received this month</dt><dd className="font-medium text-slate-900">{currency.format(collectionsReceived)}</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Outstanding receivables</dt><dd className="font-medium text-slate-900">{currency.format(outstandingReceivables)}</dd></div>
+              <div className="flex justify-between gap-4 py-3"><dt className="text-slate-600">Overdue invoices</dt><dd className="font-medium text-slate-900">{overdueInvoices}</dd></div>
+            </dl>
+          ) : <p className="rounded-xl bg-slate-50 p-6 text-sm text-slate-500">Your role cannot access financial records.</p>}
         </div>
       </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <SectionHeader title="Recent payments" icon={CreditCard} />
+          {!canReadFinancials ? <p className="text-sm text-slate-500">Your role cannot access payment records.</p> : recentPayments.length ? (
+            <div className="overflow-x-auto"><table className="min-w-full text-left text-sm">
+              <thead><tr className="border-b text-slate-500"><th className="py-2 pr-3 font-medium">Date</th><th className="py-2 pr-3 font-medium">Tenant</th><th className="py-2 pr-3 font-medium">Invoice</th><th className="py-2 text-right font-medium">Amount</th></tr></thead>
+              <tbody>{recentPayments.map((payment) => {
+                const tenant = coreData.tenants.find((row) => row.id === payment.tenant_id);
+                const invoice = coreData.invoices.find((row) => row.id === payment.invoice_id);
+                return <tr key={payment.id} className="border-b border-slate-100"><td className="py-3 pr-3">{payment.payment_date}</td><td className="py-3 pr-3">{tenant?.business_name || tenant?.individual_name || 'Tenant'}</td><td className="py-3 pr-3">{invoice?.invoice_number || '—'}</td><td className="py-3 text-right font-medium">{currency.format(payment.amount)}</td></tr>;
+              })}</tbody>
+            </table></div>
+          ) : <p className="text-sm text-slate-500">No posted payments yet.</p>}
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <SectionHeader title="Upcoming invoice due dates" icon={ReceiptText} />
+          {!canReadFinancials ? <p className="text-sm text-slate-500">Your role cannot access invoice records.</p> : upcomingInvoices.length ? (
+            <div className="overflow-x-auto"><table className="min-w-full text-left text-sm">
+              <thead><tr className="border-b text-slate-500"><th className="py-2 pr-3 font-medium">Due date</th><th className="py-2 pr-3 font-medium">Invoice</th><th className="py-2 pr-3 font-medium">Tenant</th><th className="py-2 text-right font-medium">Balance</th></tr></thead>
+              <tbody>{upcomingInvoices.map((invoice) => {
+                const tenant = coreData.tenants.find((row) => row.id === invoice.tenant_id);
+                return <tr key={invoice.id} className="border-b border-slate-100"><td className="py-3 pr-3">{invoice.due_date}</td><td className="py-3 pr-3">{invoice.invoice_number}</td><td className="py-3 pr-3">{tenant?.business_name || tenant?.individual_name || 'Tenant'}</td><td className="py-3 text-right font-medium">{currency.format(invoice.outstanding_amount)}</td></tr>;
+              })}</tbody>
+            </table></div>
+          ) : <p className="text-sm text-slate-500">No unpaid upcoming invoices.</p>}
+        </div>
+      </div>
+
+      <Suspense fallback={<div role="status" className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading shared notes…</div>}>
+        <DashboardNotes
+          notes={coreData.dashboard_notes}
+          profile={coreData.profile}
+          loading={coreLoading}
+          error={coreError}
+          onRefresh={refreshCoreData}
+        />
+      </Suspense>
     </div>
   );
 

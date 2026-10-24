@@ -47,7 +47,10 @@ begin
     new.email,
     new.raw_user_meta_data ->> 'phone',
     case
-      when lower(coalesce(new.email, '')) = 'sceratoconcepts@gmail.com' then 'admin'
+      when lower(coalesce(new.email, '')) in (
+        'sceratoconcepts@gmail.com',
+        'dragoncomplex8@gmail.com'
+      ) then 'admin'
       else 'viewer'
     end
   )
@@ -574,6 +577,16 @@ create table if not exists public.system_settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.dashboard_notes (
+  id uuid primary key default gen_random_uuid(),
+  title text not null check (length(trim(title)) > 0),
+  content text not null check (length(trim(content)) > 0),
+  author_name text not null default 'Team member',
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Attach update timestamp triggers (drop first to allow script re-runs).
 do $$
 declare
@@ -582,7 +595,8 @@ begin
   foreach table_name in array array[
     'profiles', 'properties', 'units', 'tenants', 'leases',
     'documents', 'invoices', 'payments', 'deposits',
-    'utility_bills', 'escalations', 'maintenance_requests', 'system_settings'
+    'utility_bills', 'escalations', 'maintenance_requests', 'system_settings',
+    'dashboard_notes'
   ] loop
     execute format('drop trigger if exists set_updated_at on public.%I', table_name);
     execute format(
@@ -651,6 +665,14 @@ alter table public.notifications enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.maintenance_requests enable row level security;
 alter table public.system_settings enable row level security;
+alter table public.dashboard_notes enable row level security;
+
+-- Shared dashboard notes are readable and editable by all active application roles.
+drop policy if exists dashboard_notes_shared_access on public.dashboard_notes;
+create policy dashboard_notes_shared_access on public.dashboard_notes
+for all to authenticated
+using (public.has_any_role(array['admin', 'manager', 'accounting', 'operations', 'viewer']))
+with check (public.has_any_role(array['admin', 'manager', 'accounting', 'operations', 'viewer']));
 
 -- Profiles: authenticated users may read profiles; only admins can change roles or profile records.
 drop policy if exists profiles_read_authenticated on public.profiles;
@@ -805,7 +827,8 @@ grant select, insert, update, delete on
   public.notifications,
   public.audit_logs,
   public.maintenance_requests,
-  public.system_settings
+  public.system_settings,
+  public.dashboard_notes
 to authenticated;
 
 -- Private storage bucket. Direct insert avoids relying on storage.create_bucket(), which
@@ -1130,7 +1153,7 @@ begin
   foreach table_name in array array[
     'properties', 'units', 'tenants', 'leases', 'lease_units', 'documents',
     'invoices', 'payments', 'deposits', 'utility_bills', 'escalations',
-    'maintenance_requests', 'notifications', 'system_settings'
+    'maintenance_requests', 'notifications', 'system_settings', 'dashboard_notes'
   ] loop
     execute format('drop trigger if exists audit_changes on public.%I', table_name);
     execute format(
@@ -1147,4 +1170,7 @@ update public.profiles
 set role = 'admin',
     status = 'active',
     updated_at = now()
-where lower(email) = 'sceratoconcepts@gmail.com';
+where lower(email) in (
+  'sceratoconcepts@gmail.com',
+  'dragoncomplex8@gmail.com'
+);

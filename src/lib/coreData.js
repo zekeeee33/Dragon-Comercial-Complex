@@ -16,6 +16,7 @@ const coreTables = [
   'notifications',
   'audit_logs',
   'system_settings',
+  'dashboard_notes',
   'profiles',
 ];
 
@@ -39,7 +40,12 @@ export async function loadCoreData(userId) {
   const tables = coreTables;
   const results = await Promise.all(tables.map((table) => {
     const query = supabase.from(table).select('*');
-    return query.order(table === 'system_settings' ? 'setting_key' : 'created_at', { ascending: false });
+    const orderColumn = table === 'system_settings'
+      ? 'setting_key'
+      : table === 'dashboard_notes'
+        ? 'updated_at'
+        : 'created_at';
+    return query.order(orderColumn, { ascending: false });
   }));
   const failedIndex = results.findIndex(({ error }) => error);
   if (failedIndex !== -1) {

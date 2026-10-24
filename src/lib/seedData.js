@@ -93,25 +93,3 @@ export const seedData = {
     { id: 'doc-03', type: 'ID', tenant: 'MGC Consulting Group', lease: 'DCC-LS-2503', name: 'rep_id_copy.png', status: 'Pending Review' },
   ],
 };
-
-export const dashboardChartData = [
-  { month: 'Jan', billing: 210000, collections: 175000, receivables: 79000 },
-  { month: 'Feb', billing: 228000, collections: 181000, receivables: 72000 },
-  { month: 'Mar', billing: 245000, collections: 192000, receivables: 75000 },
-  { month: 'Apr', billing: 252000, collections: 202000, receivables: 71000 },
-  { month: 'May', billing: 261000, collections: 210000, receivables: 73000 },
-  { month: 'Jun', billing: 270000, collections: 218000, receivables: 70000 },
-];
-
-export const occupancyData = [
-  { name: 'Occupied', value: 6 },
-  { name: 'Vacant', value: 3 },
-  { name: 'Reserved', value: 1 },
-];
-
-export const agingData = [
-  { name: 'Current', value: 42 },
-  { name: '31-60 days', value: 18 },
-  { name: '61-90 days', value: 10 },
-  { name: '90+ days', value: 8 },
-];
